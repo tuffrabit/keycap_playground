@@ -146,7 +146,7 @@ DEFAULT_LAYOUT = [
 # dish_z, dish_depth, key_top_difference, corner_radius, etc.  Per-key settings
 # in DEFAULT_LAYOUT override these row defaults.
 ROW_PROFILES = {
-    1: {"key_height": 13.45, "dish_tilt": 9, "dish_z": -0.4,
+    1: {"key_height": 12.4, "dish_tilt": 9, "dish_z": -0.4, "dish_depth": 0.4,
         "key_rotation": [102.2, 0, 0],
         "description": "tallest, positive tilt raises the back (+Y)"},
     2: {"key_height": 8.45, "dish_tilt": 6, "dish_z": -0.2,
