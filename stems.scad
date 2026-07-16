@@ -177,11 +177,14 @@ module stem_box_cherry(key_height, key_length, key_width, dish_depth, dish_thick
     dish_division_x=4, dish_division_y=1,
     polygon_edges=4, dish_type="cylinder", corner_radius=0.5, corner_radius_curve=0,
     polygon_rotation=false, dish_invert=false,
-    uniform_wall_thickness=false, legend_backing=true) {
+    uniform_wall_thickness=false, legend_backing=true, dish_tilt_flat=false) {
     left_support = side_supports[0];
     right_support = side_supports[1];
     front_support = side_supports[2];
     back_support = side_supports[3];
+    // DISH_TILT_FLAT: same shear Z shift the keycap exterior uses (must match!)
+    flat_z = (dish_tilt_flat && dish_tilt != 0) ?
+        tan(dish_tilt)*(top_y + (key_width-top_difference)/2) : 0;
     // Generate a top layer that spans the entire width of the keycap so we have something legends can print on
     // NOTE: We generate it similarly to poly_keycap()'s trapezoidal interior cutout so we have a precise fit
     // Give the "undershelf" a distinct color so you know it's there and not the same as the keycap:
@@ -210,7 +213,8 @@ module stem_box_cherry(key_height, key_length, key_width, dish_depth, dish_thick
                     corner_radius=key_corner_radius/1.25,
                     corner_radius_curve=corner_radius_curve,
                     polygon_rotation=polygon_rotation,
-                    dish_invert=dish_invert);
+                    dish_invert=dish_invert,
+                    dish_tilt_flat=dish_tilt_flat, dish_tilt_flat_z=flat_z);
                 translate([0,0,-0.001]) _poly_keycap(
                     height=key_height-wall_thickness-wall_extra,
                     length=key_length-wall_thickness*2-wall_extra*2,
@@ -231,7 +235,8 @@ module stem_box_cherry(key_height, key_length, key_width, dish_depth, dish_thick
                     corner_radius=key_corner_radius/1.25,
                     corner_radius_curve=corner_radius_curve,
                     polygon_rotation=polygon_rotation,
-                    dish_invert=dish_invert);
+                    dish_invert=dish_invert,
+                    dish_tilt_flat=dish_tilt_flat, dish_tilt_flat_z=flat_z);
                 translate([0,0,-key_height/2]) // Cut off bottom
                     cube([key_length*2, key_width*2, key_height], center=true);
                 if (wall_inset) {
@@ -347,7 +352,8 @@ module stem_box_cherry(key_height, key_length, key_width, dish_depth, dish_thick
             polygon_rotation=polygon_rotation,
             dish_invert=dish_invert,
             uniform_wall_thickness=uniform_wall_thickness,
-            legend_backing=legend_backing);
+            legend_backing=legend_backing,
+            dish_tilt_flat=dish_tilt_flat);
     }
 }
 
@@ -358,7 +364,7 @@ module _stem_box_cherry(key_height, key_length, key_width, dish_depth, dish_thic
     dish_division_x=4, dish_division_y=1,
     polygon_edges=4, dish_type="cylinder", corner_radius=0.5, corner_radius_curve=0,
     polygon_rotation=false, dish_invert=false,
-    uniform_wall_thickness=false, legend_backing=false) {
+    uniform_wall_thickness=false, legend_backing=false, dish_tilt_flat=false) {
     extrusion_width = 0.45;
     length = CHERRY_CYLINDER_DIAMETER-outside_tolerance_x*2;
     width = CHERRY_CYLINDER_DIAMETER-outside_tolerance_y*2;
@@ -368,6 +374,10 @@ module _stem_box_cherry(key_height, key_length, key_width, dish_depth, dish_thic
     front_support = side_supports[2];
     back_support = side_supports[3];
     stem_rotation = (polygon_layer_rotation*polygon_layers)/1.25;
+    // DISH_TILT_FLAT: same shear Z shift the keycap exterior uses (must match!)
+    flat_z = (dish_tilt_flat && dish_tilt != 0) ?
+        tan(dish_tilt)*(top_y + (key_width-top_difference)/2) : 0;
+    flat_shear = dish_tilt_flat ? flat_tilt_shear(dish_tilt, flat_z) : FLAT_TILT_IDENTITY;
     rotate(key_rotation) {
         // Generate the top part of the stem that connects to the underside of the keycap
         if (uniform_wall_thickness) {
@@ -391,8 +401,11 @@ module _stem_box_cherry(key_height, key_length, key_width, dish_depth, dish_thic
                             r=corner_radius, center=true);
             // This part gives legends something to rest on so there's no holes:
                         if (legend_backing) {
+                            // DISH_TILT_FLAT: shear the backing plate along with
+                            // the keycap instead of rotating it (no-op matrix otherwise)
+                            multmatrix(flat_shear)
                             translate([0,0,-stem_topper_height/2-inset-depth+key_height-dish_depth-wall_thickness/2])
-                                rotate([dish_tilt,0,0]) squarish_rpoly(
+                                rotate(dish_tilt_flat ? [0,0,0] : [dish_tilt,0,0]) squarish_rpoly(
                                     xy1=[key_length,key_width],
                                     xy2=[key_length,key_width],
                                     h=wall_thickness,
@@ -420,7 +433,8 @@ module _stem_box_cherry(key_height, key_length, key_width, dish_depth, dish_thic
                     corner_radius=key_corner_radius/2,
                     corner_radius_curve=corner_radius_curve,
                     polygon_rotation=polygon_rotation,
-                    dish_invert=dish_invert);
+                    dish_invert=dish_invert,
+                    dish_tilt_flat=dish_tilt_flat, dish_tilt_flat_z=flat_z);
             }
         } else { // Non-uniform wall thickness
             translate(location) difference() {
@@ -472,9 +486,9 @@ module _stem_box_cherry(key_height, key_length, key_width, dish_depth, dish_thic
                     if (locations[loc][1] != 0) {
                         // Only need to move them if they're Y (left/right) stems
                         translate([locations[loc][0],locations[loc][1],0])
-                            stem_support(key_height, key_length, key_width, dish_depth, dish_thickness, top_difference, key_corner_radius=key_corner_radius, stem_type="box_cherry", stem_depth=depth, wall_thickness=wall_thickness, wall_extra=wall_extra, wall_inset=wall_inset, wall_tolerance=wall_tolerance, top_x=top_x, top_y=top_y, outside_tolerance_x=outside_tolerance_x, outside_tolerance_y=outside_tolerance_y, inset=inset, top_thickness=top_thickness, side_support_thickness=side_support_thickness, side_supports=side_supports, support_distance=support_distance, location=locations[loc], locations=locations, key_rotation=key_rotation, polygon_layers=polygon_layers, polygon_layer_rotation=polygon_layer_rotation, polygon_curve=polygon_curve, dish_tilt=dish_tilt, dish_tilt_curve=dish_tilt_curve, dish_x=dish_x, dish_y=dish_y, dish_z=dish_z, dish_fn=dish_fn, dish_corner_fn=dish_corner_fn, polygon_edges=polygon_edges, dish_type=dish_type, dish_division_x=dish_division_x, dish_division_y=dish_division_y, corner_radius=key_corner_radius, corner_radius_curve=corner_radius_curve, polygon_rotation=polygon_rotation, dish_invert=dish_invert, uniform_wall_thickness=uniform_wall_thickness);
+                            stem_support(key_height, key_length, key_width, dish_depth, dish_thickness, top_difference, key_corner_radius=key_corner_radius, stem_type="box_cherry", stem_depth=depth, wall_thickness=wall_thickness, wall_extra=wall_extra, wall_inset=wall_inset, wall_tolerance=wall_tolerance, top_x=top_x, top_y=top_y, outside_tolerance_x=outside_tolerance_x, outside_tolerance_y=outside_tolerance_y, inset=inset, top_thickness=top_thickness, side_support_thickness=side_support_thickness, side_supports=side_supports, support_distance=support_distance, location=locations[loc], locations=locations, key_rotation=key_rotation, polygon_layers=polygon_layers, polygon_layer_rotation=polygon_layer_rotation, polygon_curve=polygon_curve, dish_tilt=dish_tilt, dish_tilt_curve=dish_tilt_curve, dish_x=dish_x, dish_y=dish_y, dish_z=dish_z, dish_fn=dish_fn, dish_corner_fn=dish_corner_fn, polygon_edges=polygon_edges, dish_type=dish_type, dish_division_x=dish_division_x, dish_division_y=dish_division_y, corner_radius=key_corner_radius, corner_radius_curve=corner_radius_curve, polygon_rotation=polygon_rotation, dish_invert=dish_invert, uniform_wall_thickness=uniform_wall_thickness, dish_tilt_flat=dish_tilt_flat);
                     } else {
-                        stem_support(key_height, key_length, key_width, dish_depth, dish_thickness, top_difference, key_corner_radius=key_corner_radius, stem_type="box_cherry", stem_depth=depth, wall_thickness=wall_thickness, wall_extra=wall_extra, wall_inset=wall_inset, top_x=top_x, top_y=top_y, outside_tolerance_x=outside_tolerance_x, outside_tolerance_y=outside_tolerance_y, inset=inset, top_thickness=top_thickness, side_support_thickness=side_support_thickness, side_supports=side_supports, support_distance=support_distance, location=locations[loc], locations=locations, key_rotation=key_rotation, polygon_layers=polygon_layers, polygon_layer_rotation=polygon_layer_rotation, polygon_curve=polygon_curve, dish_tilt=dish_tilt, dish_x=dish_x, dish_y=dish_y, dish_z=dish_z, dish_fn=dish_fn, dish_corner_fn=dish_corner_fn, dish_tilt_curve=dish_tilt_curve, polygon_edges=polygon_edges, dish_type=dish_type, dish_division_x=dish_division_x, dish_division_y=dish_division_y, corner_radius=key_corner_radius, corner_radius_curve=corner_radius_curve, polygon_rotation=polygon_rotation, dish_invert=dish_invert, uniform_wall_thickness=uniform_wall_thickness);
+                        stem_support(key_height, key_length, key_width, dish_depth, dish_thickness, top_difference, key_corner_radius=key_corner_radius, stem_type="box_cherry", stem_depth=depth, wall_thickness=wall_thickness, wall_extra=wall_extra, wall_inset=wall_inset, top_x=top_x, top_y=top_y, outside_tolerance_x=outside_tolerance_x, outside_tolerance_y=outside_tolerance_y, inset=inset, top_thickness=top_thickness, side_support_thickness=side_support_thickness, side_supports=side_supports, support_distance=support_distance, location=locations[loc], locations=locations, key_rotation=key_rotation, polygon_layers=polygon_layers, polygon_layer_rotation=polygon_layer_rotation, polygon_curve=polygon_curve, dish_tilt=dish_tilt, dish_x=dish_x, dish_y=dish_y, dish_z=dish_z, dish_fn=dish_fn, dish_corner_fn=dish_corner_fn, dish_tilt_curve=dish_tilt_curve, polygon_edges=polygon_edges, dish_type=dish_type, dish_division_x=dish_division_x, dish_division_y=dish_division_y, corner_radius=key_corner_radius, corner_radius_curve=corner_radius_curve, polygon_rotation=polygon_rotation, dish_invert=dish_invert, uniform_wall_thickness=uniform_wall_thickness, dish_tilt_flat=dish_tilt_flat);
                     }
                 }
         }
@@ -1090,7 +1104,7 @@ module stem_support(key_height, key_length, key_width, dish_depth, dish_thicknes
     dish_z=-0.75, dish_fn=32, dish_corner_fn=64, dish_tilt_curve=false,
     dish_division_x=4, dish_division_y=1,
     polygon_edges=4, dish_type="cylinder", corner_radius=0.5, corner_radius_curve=0,
-    polygon_rotation=false, dish_invert=false, uniform_wall_thickness=false) {
+    polygon_rotation=false, dish_invert=false, uniform_wall_thickness=false, dish_tilt_flat=false) {
     extrusion_width = 0.45;
     box_cherry_length = CHERRY_CYLINDER_DIAMETER-outside_tolerance_x*2;
     box_cherry_width = CHERRY_CYLINDER_DIAMETER-outside_tolerance_y*2;
@@ -1109,6 +1123,9 @@ module stem_support(key_height, key_length, key_width, dish_depth, dish_thicknes
     inverted_dish_adjustment = dish_invert ? wall_thickness : 0;
     // When not using uniform_wall_thickness, this is used to figure out how much extra space the corner radius takes up at the top of the keycap so the stem doesn't stick out the sides:
     corner_radius_factor = ((corner_radius*corner_radius_curve/polygon_layers)*polygon_layers)/1.5;
+    // DISH_TILT_FLAT: same shear Z shift the keycap exterior uses (must match!)
+    flat_z = (dish_tilt_flat && dish_tilt != 0) ?
+        tan(dish_tilt)*(top_y + (key_width-top_difference)/2) : 0;
     difference() {
         // NOTE: The side supports are actually attached to the sides so they stay firm while printing... They're easy enough to cut off afterwards with flush cutters.
         translate([0,0,-0.001])
@@ -1134,7 +1151,8 @@ module stem_support(key_height, key_length, key_width, dish_depth, dish_thicknes
                     corner_radius=key_corner_radius/2,
                     corner_radius_curve=corner_radius_curve,
                     polygon_rotation=polygon_rotation,
-                    dish_invert=dish_invert);
+                    dish_invert=dish_invert,
+                    dish_tilt_flat=dish_tilt_flat, dish_tilt_flat_z=flat_z);
             } else {
                 // NOTE: Using the interior stem cutout sizing with wall_extra*2 below because it works with both regular stems and snap-fit stems
                 squarish_rpoly(

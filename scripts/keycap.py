@@ -102,6 +102,7 @@ class Keycap(object):
             dish_invert_division_y=1,
             dish_tilt=0,
             dish_tilt_curve=True,
+            dish_tilt_flat=False,
             dish_fn=256,
             dish_corner_fn=64,
             uniform_wall_thickness=True,
@@ -168,6 +169,7 @@ class Keycap(object):
         self.dish_depth = dish_depth
         self.dish_tilt = dish_tilt
         self.dish_tilt_curve = dish_tilt_curve
+        self.dish_tilt_flat = dish_tilt_flat
         self.dish_fn = dish_fn
         self.dish_corner_fn = dish_corner_fn
         self.uniform_wall_thickness = uniform_wall_thickness
@@ -301,6 +303,7 @@ class Keycap(object):
             f"DISH_Z={self.dish_z}; "
             f"DISH_TILT={self.dish_tilt}; "
             f"DISH_TILT_CURVE={json.dumps(self.dish_tilt_curve)}; "
+            f"DISH_TILT_FLAT={json.dumps(self.dish_tilt_flat)}; "
             f"DISH_FN={self.dish_fn}; "
             f"DISH_CORNER_FN={self.dish_corner_fn}; "
             f"POLYGON_LAYERS={self.polygon_layers}; "

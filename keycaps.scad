@@ -6,16 +6,25 @@ use <legends.scad>
 // CONSTANTS
 KEY_UNIT = 19.05; // Square that makes up the entire space of a key
 
+// Shear matrix used for DISH_TILT_FLAT: tilts the whole keycap by shifting Z by
+// tan(dish_tilt)*Y (plus a constant) *after* the cap has been generated untilted.
+// Unlike DISH_TILT_CURVE (which bends the cap like a banana) a shear keeps every
+// planar face planar, so all sides stay dead flat for FDM printing.
+function flat_tilt_shear(dish_tilt, z_shift=0) =
+    [[1,0,0,0],[0,1,0,0],[0,tan(dish_tilt),1,-z_shift],[0,0,0,1]];
+FLAT_TILT_IDENTITY = [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]];
+
 // Draws the keycap without legends (because we need to do an intersection() of the keycap+legends to make sure legends conform to the correct shape)
-module _poly_keycap(height=9.0, length=18, width=18,
-  wall_thickness=1.25, top_difference=6, top_x=0, top_y=0, dish_type="cylinder", 
+// NOTE: This module is usually wrapped by _poly_keycap() which handles DISH_TILT_FLAT.
+module _poly_keycap_solid(height=9.0, length=18, width=18,
+  wall_thickness=1.25, top_difference=6, top_x=0, top_y=0, dish_type="cylinder",
   dish_tilt=-4, dish_depth=1, dish_x=0, dish_y=0, dish_z=-0.75, dish_thickness=2,
   dish_fn=32, dish_corner_fn=64, dish_tilt_curve=false, stem_clips=false,
   stem_walls_inset=0, stem_walls_tolerance=0.25,
   polygon_layers=5, polygon_layer_rotation=10, polygon_curve=0, polygon_edges=4,
   corner_radius=0.5, corner_radius_curve=0, polygon_rotation=false,
   dish_division_x=4, dish_division_y=1, // Fancy schmancy control over spherical inverted dishes
-  dish_invert=false, debug=false) {
+  dish_invert=false, base_extension=0, debug=false) {
     layer_x_adjust = top_x/polygon_layers;
     layer_y_adjust = top_y/polygon_layers;
     layer_tilt_adjust = dish_tilt/polygon_layers;
@@ -25,6 +34,7 @@ module _poly_keycap(height=9.0, length=18, width=18,
     reduction_factor = dish_tilt_curve ? 2.25 : 2.35;
     height_adjust = ((abs(width * sin(dish_tilt)) + abs(height * cos(dish_tilt))) - height)/polygon_layers/reduction_factor;
     difference() {
+        union() {
         for (l=[0:polygon_layers-1]) {
             layer_height_adjust_below = (height_adjust*l);
             layer_height_adjust_above = (height_adjust*(l+1));
@@ -310,6 +320,16 @@ module _poly_keycap(height=9.0, length=18, width=18,
                 }
             }
         }
+        // Extend the base downward (pre-shear, only used by DISH_TILT_FLAT) so
+        // the bottom can be cut flat after the shear is applied:
+        if (base_extension > 0) {
+            translate([0,0,-base_extension])
+                squarish_rpoly(
+                    xy1=[length,width], xy2=[length,width],
+                    h=base_extension, r=corner_radius, center=false,
+                    $fn=dish_corner_fn);
+        }
+        }
         // TODO: Instead of using cylinder() and sphere() to make these use 2D primitives like we do with the inverted dishes (so we don't have to crank up the $fn so high; to improve rendering speed)
         // Do the dishes!
         tilt_above_curved = dish_tilt_curve ? layer_tilt_adjust * polygon_layers : 0;
@@ -356,6 +376,102 @@ module _poly_keycap(height=9.0, length=18, width=18,
     }
 }
 
+// Wrapper around _poly_keycap_solid() that implements DISH_TILT_FLAT: instead of
+// tilting the keycap by rotating each layer (which curves/bends the whole cap),
+// the keycap is generated untilted (dish_tilt=0) and then sheared on the Y axis.
+// A shear keeps every planar face planar so the front/back/sides all stay dead
+// flat (great for FDM printing on a side face). dish_tilt_flat_z is the constant
+// Z shift of the shear; pass the same value to every _poly_keycap() call that
+// makes up one keycap (exterior, interior, stem walls) so they stay consistent.
+// dish_tilt_flat_base extends the base downward before the shear and then cuts
+// everything below Z=0 afterwards so the bottom stays flat (exterior only!).
+module _poly_keycap(height=9.0, length=18, width=18,
+  wall_thickness=1.25, top_difference=6, top_x=0, top_y=0, dish_type="cylinder",
+  dish_tilt=-4, dish_depth=1, dish_x=0, dish_y=0, dish_z=-0.75, dish_thickness=2,
+  dish_fn=32, dish_corner_fn=64, dish_tilt_curve=false, stem_clips=false,
+  stem_walls_inset=0, stem_walls_tolerance=0.25,
+  polygon_layers=5, polygon_layer_rotation=10, polygon_curve=0, polygon_edges=4,
+  corner_radius=0.5, corner_radius_curve=0, polygon_rotation=false,
+  dish_division_x=4, dish_division_y=1, // Fancy schmancy control over spherical inverted dishes
+  dish_invert=false, dish_tilt_flat=false, dish_tilt_flat_base=false,
+  dish_tilt_flat_z=0, debug=false) {
+    if (dish_tilt_flat && dish_tilt != 0) {
+        shear = flat_tilt_shear(dish_tilt, dish_tilt_flat_z);
+        if (dish_tilt_flat_base) {
+            // How far down the base must be extended so the whole bottom rim is
+            // still present after the shear and the Z<0 cut:
+            base_ext = max(abs(tan(dish_tilt))*width/2 - dish_tilt_flat_z, 0) + 0.05;
+            difference() {
+                multmatrix(shear)
+                    _poly_keycap_solid(
+                        height=height, length=length, width=width,
+                        wall_thickness=wall_thickness, top_difference=top_difference,
+                        top_x=top_x, top_y=top_y, dish_type=dish_type,
+                        dish_tilt=0, dish_depth=dish_depth,
+                        dish_x=dish_x, dish_y=dish_y, dish_z=dish_z,
+                        dish_thickness=dish_thickness, dish_fn=dish_fn,
+                        dish_corner_fn=dish_corner_fn, dish_tilt_curve=false,
+                        stem_clips=stem_clips, stem_walls_inset=stem_walls_inset,
+                        stem_walls_tolerance=stem_walls_tolerance,
+                        polygon_layers=polygon_layers,
+                        polygon_layer_rotation=polygon_layer_rotation,
+                        polygon_curve=polygon_curve, polygon_edges=polygon_edges,
+                        corner_radius=corner_radius,
+                        corner_radius_curve=corner_radius_curve,
+                        polygon_rotation=polygon_rotation,
+                        dish_division_x=dish_division_x,
+                        dish_division_y=dish_division_y,
+                        dish_invert=dish_invert, base_extension=base_ext,
+                        debug=debug);
+                // Cut off everything that the shear pushed below Z=0:
+                translate([0,0,-height])
+                    cube([length*4,width*4,height*2], center=true);
+            }
+        } else {
+            multmatrix(shear)
+                _poly_keycap_solid(
+                    height=height, length=length, width=width,
+                    wall_thickness=wall_thickness, top_difference=top_difference,
+                    top_x=top_x, top_y=top_y, dish_type=dish_type,
+                    dish_tilt=0, dish_depth=dish_depth,
+                    dish_x=dish_x, dish_y=dish_y, dish_z=dish_z,
+                    dish_thickness=dish_thickness, dish_fn=dish_fn,
+                    dish_corner_fn=dish_corner_fn, dish_tilt_curve=false,
+                    stem_clips=stem_clips, stem_walls_inset=stem_walls_inset,
+                    stem_walls_tolerance=stem_walls_tolerance,
+                    polygon_layers=polygon_layers,
+                    polygon_layer_rotation=polygon_layer_rotation,
+                    polygon_curve=polygon_curve, polygon_edges=polygon_edges,
+                    corner_radius=corner_radius,
+                    corner_radius_curve=corner_radius_curve,
+                    polygon_rotation=polygon_rotation,
+                    dish_division_x=dish_division_x,
+                    dish_division_y=dish_division_y,
+                    dish_invert=dish_invert, debug=debug);
+        }
+    } else {
+        _poly_keycap_solid(
+            height=height, length=length, width=width,
+            wall_thickness=wall_thickness, top_difference=top_difference,
+            top_x=top_x, top_y=top_y, dish_type=dish_type,
+            dish_tilt=dish_tilt, dish_depth=dish_depth,
+            dish_x=dish_x, dish_y=dish_y, dish_z=dish_z,
+            dish_thickness=dish_thickness, dish_fn=dish_fn,
+            dish_corner_fn=dish_corner_fn, dish_tilt_curve=dish_tilt_curve,
+            stem_clips=stem_clips, stem_walls_inset=stem_walls_inset,
+            stem_walls_tolerance=stem_walls_tolerance,
+            polygon_layers=polygon_layers,
+            polygon_layer_rotation=polygon_layer_rotation,
+            polygon_curve=polygon_curve, polygon_edges=polygon_edges,
+            corner_radius=corner_radius,
+            corner_radius_curve=corner_radius_curve,
+            polygon_rotation=polygon_rotation,
+            dish_division_x=dish_division_x,
+            dish_division_y=dish_division_y,
+            dish_invert=dish_invert, debug=debug);
+    }
+}
+
 // TODO: Document all these arguments
 // NOTE: If polygon_curve or corner_radius_curve are 0 they will be ignored (respectively)
 module poly_keycap(height=9.0, length=18, width=18,
@@ -374,8 +490,15 @@ module poly_keycap(height=9.0, length=18, width=18,
   homing_dot_length=0, homing_dot_width=0,
   homing_dot_x=0, homing_dot_y=0, homing_dot_z=0,
   visualize_legends=false, polygon_rotation=false, key_rotation=[0,0,0],
-  dish_invert=false, uniform_wall_thickness=true, debug=false) {
+  dish_invert=false, uniform_wall_thickness=true, dish_tilt_flat=false, debug=false) {
     layer_tilt_adjust = dish_tilt/polygon_layers;
+    // DISH_TILT_FLAT: constant Z shift of the shear so that the top's back edge
+    // (at y = top_y + (width-top_difference)/2) ends up exactly at "height".
+    // The same value is handed to every _poly_keycap() call below so the
+    // exterior, interior, and legend shapes all get the exact same shear.
+    flat_z = (dish_tilt_flat && dish_tilt != 0) ?
+        tan(dish_tilt)*(top_y + (width-top_difference)/2) : 0;
+    flat_shear = dish_tilt_flat ? flat_tilt_shear(dish_tilt, flat_z) : FLAT_TILT_IDENTITY;
     // Inverted dish means we need to make the legend a little taller
     legend_inverted_dish_adjustment = dish_invert ? dish_depth*1.25 : 0;
     inverted_dish_adjustment = dish_invert ? dish_depth : 0;
@@ -409,8 +532,10 @@ module poly_keycap(height=9.0, length=18, width=18,
                 dish_type=dish_type, corner_radius=corner_radius,
                 dish_division_x=dish_division_x, dish_division_y=dish_division_y,
                 corner_radius_curve=corner_radius_curve, polygon_rotation=polygon_rotation,
-                dish_invert=dish_invert);
-            tilt_above_curved = dish_tilt_curve ? layer_tilt_adjust * polygon_layers : 0;
+                dish_invert=dish_invert,
+                dish_tilt_flat=dish_tilt_flat, dish_tilt_flat_base=true,
+                dish_tilt_flat_z=flat_z);
+            tilt_above_curved = (dish_tilt_curve && !dish_tilt_flat) ? layer_tilt_adjust * polygon_layers : 0;
             // Take care of the legends
             for (i=[0:1:len(legends)-1]) {
                 legend = legends[i] ? legends[i]: "";
@@ -425,6 +550,9 @@ module poly_keycap(height=9.0, length=18, width=18,
                     legend_underset[0] ? legend_underset[0]: [0,0,0]);
                 if (visualize_legends) {
                     %translate(underset) {
+                      // DISH_TILT_FLAT: shear the legend along with the keycap
+                      // (no-op matrix when not in flat mode)
+                      multmatrix(flat_shear)
                       translate(trans2) rotate(rotation2)
                         translate(trans) rotate(rotation)
                           scale(l_scale)
@@ -452,13 +580,18 @@ module poly_keycap(height=9.0, length=18, width=18,
                                                 dish_type=dish_type, corner_radius=corner_radius,
                                                 corner_radius_curve=corner_radius_curve,
                                                 polygon_rotation=polygon_rotation,
-                                                dish_invert=dish_invert);
+                                                dish_invert=dish_invert,
+                                                dish_tilt_flat=dish_tilt_flat,
+                                                dish_tilt_flat_z=flat_z);
                                     }
                                 }
                     }
                 } else {
                     // NOTE: This translate([0,0,0.001]) call is just to fix preview rendering
                     translate(underset) translate([0,0,0.001]) intersection() {
+                      // DISH_TILT_FLAT: shear the legend along with the keycap
+                      // (no-op matrix when not in flat mode)
+                      multmatrix(flat_shear)
                       translate(trans2) rotate(rotation2)
                         translate(trans) rotate(rotation)
                           scale(l_scale)
@@ -485,7 +618,9 @@ module poly_keycap(height=9.0, length=18, width=18,
                                                 dish_type=dish_type, corner_radius=corner_radius,
                                                 corner_radius_curve=corner_radius_curve,
                                                 polygon_rotation=polygon_rotation,
-                                                dish_invert=dish_invert);
+                                                dish_invert=dish_invert,
+                                                dish_tilt_flat=dish_tilt_flat,
+                                                dish_tilt_flat_z=flat_z);
                                     }
                                 }
                                 _poly_keycap(
@@ -507,7 +642,9 @@ module poly_keycap(height=9.0, length=18, width=18,
                                     dish_type=dish_type, corner_radius=corner_radius,
                                     corner_radius_curve=corner_radius_curve,
                                     polygon_rotation=polygon_rotation,
-                                    dish_invert=dish_invert);
+                                    dish_invert=dish_invert,
+                                    dish_tilt_flat=dish_tilt_flat,
+                                    dish_tilt_flat_z=flat_z);
                     }
                 }
             }
@@ -533,7 +670,9 @@ module poly_keycap(height=9.0, length=18, width=18,
                         dish_division_x=dish_division_x, dish_division_y=dish_division_y,
                         corner_radius_curve=corner_radius_curve,
                         polygon_rotation=polygon_rotation,
-                        dish_invert=dish_invert);
+                        dish_invert=dish_invert,
+                        dish_tilt_flat=dish_tilt_flat,
+                        dish_tilt_flat_z=flat_z);
                 }
                 if (stem_clips) {
                     warning("STEM_SNAP_FIT/stem_clips does not currently wortk with UNIFORM_WALL_THICKNESS");
@@ -640,6 +779,8 @@ module poly_keycap(height=9.0, length=18, width=18,
 // NOTE: ADA compliance calls for ~0.5mm-tall braille dots so that's why there's a -0.5mm below
         if (homing_dot_length && homing_dot_width) { // Add "homing dots"
             dot_corner_radius = homing_dot_length > homing_dot_width ? homing_dot_width/2.05 : homing_dot_length/2.05;
+            // DISH_TILT_FLAT: shear the dot along with the keycap (no-op matrix when not in flat mode)
+            multmatrix(flat_shear)
             translate([homing_dot_x, homing_dot_y, height-dish_depth+homing_dot_z-0.5])
                 squarish_rpoly(
                     xy=[homing_dot_length,homing_dot_width],

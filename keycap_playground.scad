@@ -105,6 +105,7 @@ DISH_THICKNESS = 1; // Amount of material that will be placed under the bottommo
 // NOTE: Also, if you're printing white keycaps with transparent legends you want a thick dish (1.2+) to darken the non-transparent parts of the keycap
 DISH_TILT = 0; // How to rotate() the dish of the key (on the Y axis)
 DISH_TILT_CURVE = true; // If you want a more organic ("tentacle"!) shape set this to true
+DISH_TILT_FLAT = false; // Apply DISH_TILT as a shear of the whole keycap instead of bending it: all sides (and the bottom) stay dead flat so you can FDM print on any face. KEY_HEIGHT becomes the max height (at the back edge). Overrides DISH_TILT_CURVE. NOTE: Only box_cherry stems currently follow DISH_TILT_FLAT (and the "legends"/"underset_mask" render modes are not adjusted for it).
 DISH_INVERT = false; // Set to true for things like spacebars
 // These two settings only apply to inverted spherical dishes and let you control how wide the X and Y curves will be (you'll have to play around with them to figure out what they do--it's too hard to describe here haha)
 DISH_INVERT_DIVISION_X = 4;
@@ -283,7 +284,8 @@ module key_using_globals(legends) {
         homing_dot_length=HOMING_DOT_LENGTH, homing_dot_width=HOMING_DOT_WIDTH,
         homing_dot_x=HOMING_DOT_X, homing_dot_y=HOMING_DOT_Y, homing_dot_z=HOMING_DOT_Z,
         key_rotation=KEY_ROTATION, dish_invert=DISH_INVERT,
-        debug=DEBUG, uniform_wall_thickness=UNIFORM_WALL_THICKNESS);
+        debug=DEBUG, uniform_wall_thickness=UNIFORM_WALL_THICKNESS,
+        dish_tilt_flat=DISH_TILT_FLAT);
 }
 
 // Generates a keycap using global variables without legends so we can do an intersection() that generates the legends as an independent object
@@ -309,7 +311,8 @@ module key_without_legends() {
         homing_dot_x=HOMING_DOT_X, homing_dot_y=HOMING_DOT_Y, homing_dot_z=HOMING_DOT_Z,
         visualize_legends=VISUALIZE_LEGENDS, polygon_rotation=POLYGON_ROTATION,
         key_rotation=KEY_ROTATION, dish_invert=DISH_INVERT,
-        debug=DEBUG, uniform_wall_thickness=UNIFORM_WALL_THICKNESS);
+        debug=DEBUG, uniform_wall_thickness=UNIFORM_WALL_THICKNESS,
+        dish_tilt_flat=DISH_TILT_FLAT);
 }
 
 // Renders a stem and stabilizers using global values
@@ -358,7 +361,8 @@ module stem_using_globals() {
             polygon_edges=POLYGON_EDGES,
             polygon_curve=POLYGON_CURVE,
             polygon_rotation=POLYGON_ROTATION,
-            uniform_wall_thickness=UNIFORM_WALL_THICKNESS);
+            uniform_wall_thickness=UNIFORM_WALL_THICKNESS,
+            dish_tilt_flat=DISH_TILT_FLAT);
     } else if (STEM_TYPE == "round_cherry") {
         stem_round_cherry(
             key_height=KEY_HEIGHT+KEY_HEIGHT_EXTRA,
